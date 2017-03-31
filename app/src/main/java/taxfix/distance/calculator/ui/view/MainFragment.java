@@ -1,10 +1,11 @@
 package taxfix.distance.calculator.ui.view;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.os.Bundle;
 import android.support.design.widget.Snackbar;
 import android.support.v4.app.Fragment;
-import android.view.KeyEvent;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -15,6 +16,11 @@ import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import com.google.android.gms.common.GooglePlayServicesNotAvailableException;
+import com.google.android.gms.common.GooglePlayServicesRepairableException;
+import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.places.Place;
+import com.google.android.gms.location.places.ui.PlaceAutocomplete;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapView;
@@ -27,10 +33,12 @@ import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
 import taxfix.distance.calculator.R;
-import taxfix.distance.calculator.domain.Location;
 import taxfix.distance.calculator.data.LocationHistoryDataSource;
+import taxfix.distance.calculator.domain.Location;
 import taxfix.distance.calculator.ui.presenter.DistanceCalculatorPresenter;
 
+import static android.app.Activity.RESULT_CANCELED;
+import static android.app.Activity.RESULT_OK;
 import static android.view.View.GONE;
 import static android.view.View.INVISIBLE;
 import static android.view.View.VISIBLE;
@@ -57,26 +65,21 @@ public class MainFragment extends Fragment implements OnMapReadyCallback, Distan
 
     private static final float ZOOM_LEVEL = 10.5f;
     private static final float TILT_VALUE = 25;
+    private static final int PLACE_AUTOCOMPLETE_REQUEST_CODE = 1;
 
     private GoogleMap map;
     private DistanceCalculatorPresenter presenter;
-    private View.OnKeyListener keyListener = new View.OnKeyListener() {
+    private View.OnClickListener clickListener = new View.OnClickListener() {
         @Override
-        public boolean onKey(View v, int keyCode, KeyEvent event) {
-            if ((event.getAction() == KeyEvent.ACTION_DOWN) &&
-                    (keyCode == KeyEvent.KEYCODE_ENTER)) {
-                switch (v.getId()) {
-                    case R.id.homeAddressEditText:
-                        presenter.onHomeAddressEntered(homeAddress.getText().toString());
-                        break;
-                    case R.id.workAddressEditText:
-                        presenter.onWorkAddressEntered(workAddress.getText().toString());
-                }
-            } else if ((event.getAction() == KeyEvent.ACTION_DOWN) &&
-                    (keyCode == KeyEvent.KEYCODE_DEL)) {
-                presenter.onKeyboardBackKeyPressed();
+        public void onClick(View v) {
+            try {
+                Intent intent = new PlaceAutocomplete.IntentBuilder(
+                        PlaceAutocomplete.MODE_FULLSCREEN)
+                        .build(getActivity());
+                startActivityForResult(intent, PLACE_AUTOCOMPLETE_REQUEST_CODE);
+            } catch (GooglePlayServicesRepairableException e) {
+            } catch (GooglePlayServicesNotAvailableException e) {
             }
-            return false;
         }
     };
 
@@ -103,8 +106,10 @@ public class MainFragment extends Fragment implements OnMapReadyCallback, Distan
         mapView.onCreate(savedInstanceState);
         mapView.getMapAsync(this);
         presenter = new DistanceCalculatorPresenter();
-        homeAddress.setOnKeyListener(keyListener);
-        workAddress.setOnKeyListener(keyListener);
+//        homeAddress.setOnKeyListener(keyListener);
+//        workAddress.setOnKeyListener(keyListener);
+        homeAddress.setOnClickListener(clickListener);
+        workAddress.setOnClickListener(clickListener);
     }
 
     @Override
@@ -214,8 +219,29 @@ public class MainFragment extends Fragment implements OnMapReadyCallback, Distan
         map.clear();
     }
 
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == PLACE_AUTOCOMPLETE_REQUEST_CODE) {
+            if (resultCode == RESULT_OK) {
+                Place place = PlaceAutocomplete.getPlace(getActivity(), data);
+                if(homeAddress.hasFocus()){
+                    homeAddress.setText(place.getName());
+                    presenter.onHomeAddressEntered(homeAddress.getText().toString());
+                }else{
+                    workAddress.setText(place.getName());
+                    presenter.onWorkAddressEntered(workAddress.getText().toString());
+                }
+            } else if (resultCode == PlaceAutocomplete.RESULT_ERROR) {
+                Status status = PlaceAutocomplete.getStatus(getActivity(), data);
+                Log.e("status", status+"");
+            } else if (resultCode == RESULT_CANCELED) {
+                Log.e("map", "user cancelled result");
+            }
+        }
+    }
+
     @OnClick(R.id.mapView)
-    void onMapClick(){
+    void onMapClick() {
         hideKeyboard();
     }
 }
